@@ -20,7 +20,11 @@ import {
   LifeBuoy,
   Sparkles,
   Layers,
-  ExternalLink
+  ExternalLink,
+  LayoutDashboard,
+  Globe,
+  Shield,
+  Activity
 } from 'lucide-react';
 
 interface NavItemProps {
@@ -80,12 +84,16 @@ export function MainSidebar({ collapsed = false, onToggleCollapse }: MainSidebar
   };
 
   const mainNavItems = [
+    { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/dashboard' },
     { icon: <Home className="h-4 w-4" />, label: 'Home', href: '/' },
     { icon: <MessageSquare className="h-4 w-4" />, label: 'Chat', href: '/chat' },
     { icon: <Workflow className="h-4 w-4" />, label: 'Workflows', href: '/workflows', badge: "New" },
     { icon: <FileText className="h-4 w-4" />, label: 'Documents', href: '/documents' },
+    { icon: <Activity className="h-4 w-4" />, label: 'API Documents', href: '/api-documents', badge: "New" },
     { icon: <Database className="h-4 w-4" />, label: 'Knowledge Base', href: '/knowledge-base' },
     { icon: <BrainCircuit className="h-4 w-4" />, label: 'Fine-Tuning', href: '/fine-tuning' },
+    { icon: <Globe className="h-4 w-4" />, label: 'Integrations', href: '/integrations' },
+    { icon: <Shield className="h-4 w-4" />, label: 'Security', href: '/security-performance', badge: "New" },
   ];
 
   const secondaryNavItems = [

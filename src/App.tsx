@@ -3,6 +3,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import MinimalApp from "./MinimalApp";
+import ErrorBoundary from "./components/ErrorBoundary";
+import { performanceMonitoring } from "./lib/monitoring/performanceMonitoringService";
 
 // Create a client for React Query
 const queryClient = new QueryClient({
@@ -270,11 +272,33 @@ const App = () => {
     );
   }
 
+  // Handle errors caught by ErrorBoundary
+  const handleError = (error: Error, errorInfo: React.ErrorInfo) => {
+    // In a production app, you might send this to an error reporting service
+    console.error("Application error:", error, errorInfo);
+    
+    // Track the error in performance monitoring
+    performanceMonitoring.trackMetric({
+      id: `app_error_${Date.now()}`,
+      type: 'custom',
+      name: `App Error: ${error.name}`,
+      startTime: performance.now(),
+      duration: 0,
+      metadata: {
+        error: error.toString(),
+        stack: error.stack,
+        componentStack: errorInfo.componentStack
+      }
+    });
+  };
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <MinimalApp tempoEnabled={import.meta.env.VITE_TEMPO} />
-      {/* Toaster components moved to MinimalApp to prevent duplication */}
-    </QueryClientProvider>
+    <ErrorBoundary onError={handleError}>
+      <QueryClientProvider client={queryClient}>
+        <MinimalApp tempoEnabled={import.meta.env.VITE_TEMPO} />
+        {/* Toaster components moved to MinimalApp to prevent duplication */}
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 };
 

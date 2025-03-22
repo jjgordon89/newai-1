@@ -31,6 +31,22 @@ import Templates from "@/pages/Templates";
 import FineTuning from "@/pages/FineTuning";
 import WorkflowManagement from "@/pages/WorkflowManagement";
 import { WorkflowBuilderPage } from "@/pages/WorkflowBuilder";
+import ReduxDemo from "@/pages/ReduxDemo";
+import DocumentManagementPage from "@/pages/DocumentManagementPage";
+import UserProfilePage from "@/pages/UserProfilePage";
+import UserAdminPage from "@/pages/UserAdminPage";
+import AccessDeniedPage from "@/pages/AccessDeniedPage";
+import AuthPage from "@/pages/AuthPage";
+import PerformanceOptimizationPage from "@/pages/PerformanceOptimizationPage";
+import ProtectedRouteWithPermission from "@/components/auth/ProtectedRouteWithPermission";
+import IntegrationsPage from "@/pages/IntegrationsPage";
+import SecurityAndPerformance from "@/pages/SecurityAndPerformance";
+import Dashboard from "@/pages/Dashboard";
+import ReduxLoginForm from "@/components/auth/ReduxLoginForm";
+import ReduxRegisterForm from "@/components/auth/ReduxRegisterForm";
+import ApiDocumentsPage from "@/pages/ApiDocumentsPage";
+import DocumentDetailsPage from "@/pages/DocumentDetailsPage";
+import DocumentEditPage from "@/pages/DocumentEditPage";
 import NotFound from "@/pages/NotFound";
 import FallbackPage from "@/pages/FallbackPage";
 
@@ -93,8 +109,11 @@ const MinimalApp = ({ tempoEnabled }: MinimalAppProps) => {
                         element={<div>Tempo Storybook</div>}
                       />
                     )}
-                    <Route path="/login" element={<LoginForm />} />
-                    <Route path="/register" element={<RegisterForm />} />
+                    <Route path="/auth" element={<AuthPage />} />
+                    <Route path="/login" element={<Navigate to="/auth" replace />} />
+                    <Route path="/register" element={<Navigate to="/auth?tab=register" replace />} />
+                    <Route path="/redux-login" element={<ReduxLoginForm />} />
+                    <Route path="/redux-register" element={<ReduxRegisterForm />} />
                     <Route
                       path="/"
                       element={
@@ -120,10 +139,59 @@ const MinimalApp = ({ tempoEnabled }: MinimalAppProps) => {
                       }
                     />
                     <Route
+                      path="/user-profile"
+                      element={
+                        <ProtectedRoute>
+                          <UserProfilePage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/users"
+                      element={
+                        <ProtectedRouteWithPermission resource="users" action="manage">
+                          <UserAdminPage />
+                        </ProtectedRouteWithPermission>
+                      }
+                    />
+                    <Route path="/access-denied" element={<AccessDeniedPage />} />
+                    <Route
+                      path="/performance"
+                      element={
+                        <ProtectedRoute>
+                          <PerformanceOptimizationPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
                       path="/documents"
                       element={
                         <ProtectedRoute>
                           <Documents />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/api-documents"
+                      element={
+                        <ProtectedRoute>
+                          <ApiDocumentsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/document-details/:documentId"
+                      element={
+                        <ProtectedRoute>
+                          <DocumentDetailsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/document-edit/:documentId"
+                      element={
+                        <ProtectedRoute>
+                          <DocumentEditPage />
                         </ProtectedRoute>
                       }
                     />
@@ -180,6 +248,46 @@ const MinimalApp = ({ tempoEnabled }: MinimalAppProps) => {
                       element={
                         <ProtectedRoute>
                           <WorkflowBuilderPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/redux-demo"
+                      element={
+                        <ProtectedRoute>
+                          <ReduxDemo />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/document-management"
+                      element={
+                        <ProtectedRoute>
+                          <DocumentManagementPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/integrations"
+                      element={
+                        <ProtectedRoute>
+                          <IntegrationsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/security-performance"
+                      element={
+                        <ProtectedRoute>
+                          <SecurityAndPerformance />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/dashboard"
+                      element={
+                        <ProtectedRoute>
+                          <Dashboard />
                         </ProtectedRoute>
                       }
                     />

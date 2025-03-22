@@ -10,7 +10,7 @@ import {
   MessageSquare,
   User
 } from 'lucide-react';
-import { NotificationCenter } from '@/components/NotificationCenter';
+import { ReduxNotificationCenter } from '@/components/ReduxNotificationCenter';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { UserMenu } from '@/components/UserMenu';
@@ -92,7 +92,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               <MessageSquare className="h-5 w-5" />
             </Button>
             
-            <NotificationCenter />
+            <ReduxNotificationCenter />
             
             <UserMenu />
           </div>
@@ -115,13 +115,19 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
 // Helper to get page title based on current route
 function getPageTitle(pathname: string): string {
-  if (pathname === '/') return 'Dashboard';
+  if (pathname === '/') return 'Home';
+  if (pathname === '/dashboard') return 'Dashboard';
   if (pathname.startsWith('/workflow-builder')) return 'Workflow Builder';
-  if (pathname.startsWith('/documents')) return 'Documents';
+  if (pathname.startsWith('/documents') && !pathname.startsWith('/document-')) return 'Documents';
+  if (pathname.startsWith('/api-documents')) return 'API Documents';
+  if (pathname.startsWith('/document-details')) return 'Document Details';
+  if (pathname.startsWith('/document-edit')) return 'Edit Document';
   if (pathname.startsWith('/knowledge-base')) return 'Knowledge Base';
   if (pathname.startsWith('/fine-tuning')) return 'Fine-Tuning';
   if (pathname.startsWith('/profile')) return 'Settings & Profile';
   if (pathname.startsWith('/chat')) return 'Chat';
+  if (pathname.startsWith('/integrations')) return 'Integrations';
+  if (pathname.startsWith('/security-performance')) return 'Security & Performance';
   
   // Default title for unknown routes
   return 'AI Platform';

@@ -1,536 +1,555 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useWorkflow } from '@/context/WorkflowContext';
-import { Workflow } from '@/lib/workflowTypes';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { toast } from '@/hooks/use-toast';
-import { formatDistanceToNow } from 'date-fns';
-import { 
-  Plus, 
-  Search, 
-  FolderIcon, 
-  FileIcon, 
-  Settings, 
-  Download, 
-  Upload, 
-  Copy, 
-  Trash, 
+import { useNavigate } from 'react-router-dom';
+import { useAppDispatch, useAppSelector } from '../redux/hooks';
+import {
+  fetchWorkflows,
+  createWorkflow,
+  updateWorkflow,
+  deleteWorkflow,
+  executeWorkflow,
+  setActiveWorkflow,
+  Workflow,
+  WorkflowNode,
+  WorkflowEdge
+} from '../redux/slices/workflowSlice';
+
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle
+} from '../components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from '../components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose
+} from '../components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '../components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '../components/ui/alert-dialog';
+import { Alert, AlertDescription } from '../components/ui/alert';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Textarea } from '../components/ui/textarea';
+import { Label } from '../components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Badge } from '../components/ui/badge';
+import { useToast } from '../hooks/use-toast';
+
+import {
   Play,
-  ExternalLink,
-  CheckCircle,
-  AlertCircle
+  Plus,
+  Edit,
+  Trash,
+  AlertCircle,
+  Loader2,
+  Settings,
+  ListFilter,
+  ArrowRight,
+  GitBranch
 } from 'lucide-react';
 
-const WorkflowManagement: React.FC = () => {
-  console.log("Rendering WorkflowManagement component");
+export default function WorkflowManagement() {
   const navigate = useNavigate();
-  const {
-    workflows,
-    createWorkflow,
-    deleteWorkflow,
-    templates,
-    setActiveWorkflowId
-  } = useWorkflow();
-  
-  console.log("Workflows:", workflows);
-  console.log("Templates:", templates);
-  
-  // Local state for workflows if context fails
-  const [localWorkflows, setLocalWorkflows] = useState<Workflow[]>([]);
-  
+  const dispatch = useAppDispatch();
+  const { toast } = useToast();
+  const { workflows, activeWorkflow, executions, isLoading, error } = useAppSelector(
+    state => state.workflows
+  );
+
+  // Local state
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [workflowToDelete, setWorkflowToDelete] = useState<string | null>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    category: 'AI Agents'
+  });
+
+  // Fetch workflows on mount
   useEffect(() => {
-    console.log("WorkflowManagement mounted");
+    dispatch(fetchWorkflows());
+  }, [dispatch]);
+
+  // Handle form input changes
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  // Handle category select change
+  const handleCategoryChange = (value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      category: value
+    }));
+  };
+
+  // Handle form submission
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     
-    // Force a refresh of localStorage data
-    const savedWorkflows = localStorage.getItem('workflows');
-    if (savedWorkflows) {
-      console.log("LocalStorage workflows:", JSON.parse(savedWorkflows));
-    } else {
-      console.log("No workflows found in localStorage");
-    }
-    
-    // Add dummy workflow for debugging if none exist
-    if (workflows.length === 0) {
-      console.log("No workflows in context, creating local fallback workflows");
-      
-      // Create some fallback local workflows for testing
-      const fallbackWorkflows = [
+    try {
+      // Validate form data
+      if (!formData.name.trim()) {
+        toast({
+          title: 'Validation Error',
+          description: 'Workflow name is required',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // Create initial nodes and edges for a new workflow
+      const initialNodes: WorkflowNode[] = [
         {
-          id: "fallback-1",
-          name: "Simple RAG Workflow",
-          description: "A workflow that uses retrieval augmented generation",
-          category: "AI Agents",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          nodes: [],
-          edges: []
+          id: 'input-1',
+          type: 'input',
+          position: { x: 100, y: 100 },
+          data: {
+            label: 'Input',
+            variableName: 'input',
+            dataType: 'string'
+          }
         },
         {
-          id: "fallback-2",
-          name: "Web Search Agent",
-          description: "A workflow that enhances responses with web search results",
-          category: "Search",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          nodes: [],
-          edges: []
+          id: 'output-1',
+          type: 'output',
+          position: { x: 100, y: 300 },
+          data: {
+            label: 'Output',
+            variableName: 'output',
+            dataType: 'string'
+          }
         }
       ];
-      
-      setLocalWorkflows(fallbackWorkflows);
-    }
-  }, [workflows.length]);
-  
-  // Use local workflows if context workflows are empty
-  const effectiveWorkflows = workflows.length > 0 ? workflows : localWorkflows;
-  
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [showImportDialog, setShowImportDialog] = useState(false);
-  const [importData, setImportData] = useState('');
-  const [importError, setImportError] = useState('');
-  const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(null);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  
-  // Filter workflows based on search query
-  const filteredWorkflows = effectiveWorkflows.filter(workflow =>
-    workflow.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (workflow.description || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
-  
-  // Group workflows by category
-  const workflowsByCategory = filteredWorkflows.reduce((acc, workflow) => {
-    const category = workflow.category || 'General';
-    if (!acc[category]) {
-      acc[category] = [];
-    }
-    acc[category].push(workflow);
-    return acc;
-  }, {} as Record<string, Workflow[]>);
-  
-  // Sort categories by name
-  const sortedCategories = Object.keys(workflowsByCategory).sort();
-  
-  // Handle creating a new workflow
-  const handleCreateWorkflow = (name: string, description: string, templateId?: string) => {
-    try {
-      const newWorkflow = createWorkflow(name, description, templateId);
-      setShowCreateDialog(false);
-      toast({
-        title: "Workflow Created",
-        description: `"${name}" has been created successfully.`,
-      });
-      // Navigate to the workflow builder with the new workflow
-      navigate(`/workflow-builder/${newWorkflow.id}`);
-    } catch (error) {
-      toast({
-        title: "Error Creating Workflow",
-        description: `Failed to create workflow: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        variant: "destructive",
-      });
-    }
-  };
-  
-  // Handle deleting a workflow
-  const handleDeleteWorkflow = () => {
-    if (!selectedWorkflow) return;
-    
-    try {
-      deleteWorkflow(selectedWorkflow.id);
-      setSelectedWorkflow(null);
-      setShowDeleteDialog(false);
-      toast({
-        title: "Workflow Deleted",
-        description: `"${selectedWorkflow.name}" has been deleted.`,
-      });
-    } catch (error) {
-      toast({
-        title: "Error Deleting Workflow",
-        description: `Failed to delete workflow: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        variant: "destructive",
-      });
-    }
-  };
-  
-  // Handle importing a workflow
-  const handleImportWorkflow = () => {
-    try {
-      setImportError('');
-      
-      if (!importData.trim()) {
-        setImportError('Please enter workflow JSON data');
-        return;
-      }
-      
-      // Parse the import data
-      const parsedData = JSON.parse(importData);
-      
-      // Basic validation
-      if (!parsedData.name || !parsedData.nodes || !Array.isArray(parsedData.nodes)) {
-        setImportError('Invalid workflow data structure');
-        return;
-      }
-      
-      // Create the workflow
-      const newWorkflow = createWorkflow(
-        parsedData.name,
-        parsedData.description || '',
-      );
-      
-      // Add nodes and edges to the workflow
-      // This would need to be implemented in the WorkflowContext
-      // For now, we'll just create an empty workflow with the name and description
-      
-      setShowImportDialog(false);
-      setImportData('');
-      
-      toast({
-        title: "Workflow Imported",
-        description: `"${parsedData.name}" has been imported successfully.`,
-      });
-      
-      // Navigate to the workflow builder with the imported workflow
-      navigate(`/workflow-builder/${newWorkflow.id}`);
-    } catch (error) {
-      setImportError(`Failed to import workflow: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  };
-  
-  // Handle exporting a workflow
-  const handleExportWorkflow = (workflow: Workflow) => {
-    try {
-      // Create export data
-      const exportData = {
-        name: workflow.name,
-        description: workflow.description,
-        nodes: workflow.nodes,
-        edges: workflow.edges,
-        metadata: {
-          exportedAt: new Date().toISOString(),
-          version: '1.0'
+
+      const initialEdges: WorkflowEdge[] = [
+        {
+          id: 'edge-input-output',
+          source: 'input-1',
+          target: 'output-1',
+          type: 'default'
         }
-      };
-      
-      // Convert to JSON string
-      const jsonString = JSON.stringify(exportData, null, 2);
-      
-      // Create data URI
-      const dataUri = `data:application/json;charset=utf-8,${encodeURIComponent(jsonString)}`;
-      
-      // Create download link
-      const exportFileDefaultName = `workflow-${workflow.id}-${new Date().toISOString().slice(0, 10)}.json`;
-      
-      const linkElement = document.createElement('a');
-      linkElement.setAttribute('href', dataUri);
-      linkElement.setAttribute('download', exportFileDefaultName);
-      linkElement.click();
-      
+      ];
+
+      // Create new workflow
+      await dispatch(createWorkflow({
+        name: formData.name,
+        description: formData.description,
+        category: formData.category,
+        nodes: initialNodes,
+        edges: initialEdges
+      })).unwrap();
+
+      // Show success message
       toast({
-        title: "Workflow Exported",
-        description: `"${workflow.name}" has been exported successfully.`,
+        title: 'Workflow Created',
+        description: `"${formData.name}" has been successfully created.`
       });
+
+      // Reset form and close dialog
+      setFormData({
+        name: '',
+        description: '',
+        category: 'AI Agents'
+      });
+      setIsCreateDialogOpen(false);
     } catch (error) {
       toast({
-        title: "Error Exporting Workflow",
-        description: `Failed to export workflow: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        variant: "destructive",
+        title: 'Error',
+        description: String(error),
+        variant: 'destructive'
       });
     }
   };
-  
-  // Handle running a workflow
-  const handleRunWorkflow = (workflow: Workflow) => {
-    setActiveWorkflowId(workflow.id);
-    navigate(`/workflow-builder/${workflow.id}`);
-    
-    // The actual execution will be handled in the WorkflowBuilder component
-    // This just navigates to the workflow builder with the selected workflow
+
+  // Handle delete workflow
+  const handleDeleteWorkflow = async (id: string) => {
+    try {
+      await dispatch(deleteWorkflow(id)).unwrap();
+      
+      toast({
+        title: 'Workflow Deleted',
+        description: 'The workflow has been successfully deleted.'
+      });
+      
+      setWorkflowToDelete(null);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: String(error),
+        variant: 'destructive'
+      });
+    }
   };
-  
+
+  // Handle execute workflow
+  const handleExecuteWorkflow = async (id: string) => {
+    try {
+      await dispatch(executeWorkflow(id)).unwrap();
+      
+      toast({
+        title: 'Workflow Execution Started',
+        description: 'The workflow execution has been started.'
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: String(error),
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Handle edit workflow
+  const handleEditWorkflow = (workflow: Workflow) => {
+    dispatch(setActiveWorkflow(workflow));
+    navigate(`/workflow-builder/${workflow.id}`);
+  };
+
+  // Get filtered workflows based on selected category
+  const filteredWorkflows = selectedCategory === 'all'
+    ? workflows
+    : workflows.filter(w => w.category === selectedCategory);
+
+  // Get unique categories from workflows, ensuring string typie
+  const categories = ['all', ...Array.from(new Set(workflows.map(w => String(w.category || ''))))];
+
+  // Format date
+  const formatDate = (date: string) => {
+    return new Date(date).toLocaleString();
+  };
+
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
-      {/* Header */}
+    <div className="container mx-auto py-8 px-4">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-3xl font-bold">Workflow Management</h1>
-          <p className="text-muted-foreground">Build, manage, and run AI workflows</p>
-        </div>
-        
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setShowImportDialog(true)}>
-            <Upload className="h-4 w-4 mr-2" />
-            Import
-          </Button>
-          
-          <Button onClick={() => setShowCreateDialog(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Create Workflow
-          </Button>
-        </div>
-      </div>
-      
-      {/* Search and filters */}
-      <div className="mb-6">
-        <div className="relative">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search workflows..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-      </div>
-      
-      {/* Workflow grid */}
-      {sortedCategories.length > 0 ? (
-        <div className="space-y-8">
-          {sortedCategories.map(category => (
-            <div key={category}>
-              <div className="flex items-center mb-4">
-                <h2 className="text-xl font-semibold">{category}</h2>
-                <Separator className="flex-1 ml-4" />
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {workflowsByCategory[category].map(workflow => (
-                  <Card key={workflow.id} className="overflow-hidden hover:shadow-md transition-shadow">
-                    <CardHeader className="pb-3">
-                      <div className="flex justify-between items-start">
-                        <CardTitle className="text-lg truncate">{workflow.name}</CardTitle>
-                        <Badge variant={workflow.nodes.length > 0 ? "default" : "outline"}>
-                          {workflow.nodes.length > 0 ? 'Active' : 'Draft'}
-                        </Badge>
-                      </div>
-                      <CardDescription className="truncate">
-                        {workflow.description || 'No description'}
-                      </CardDescription>
-                    </CardHeader>
-                    
-                    <CardContent className="pb-3">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <FileIcon className="h-4 w-4" />
-                        <span>{workflow.nodes.length} nodes</span>
-                        <span className="text-border">•</span>
-                        <span>{workflow.edges.length} connections</span>
-                      </div>
-                      
-                      <div className="mt-3 text-xs text-muted-foreground">
-                        Updated {formatDistanceToNow(new Date(workflow.updatedAt))} ago
-                      </div>
-                    </CardContent>
-                    
-                    <CardFooter className="pt-0 flex gap-2">
-                      <Button variant="default" size="sm" className="flex-1" onClick={() => handleRunWorkflow(workflow)}>
-                        <Play className="h-4 w-4 mr-2" />
-                        Run
-                      </Button>
-                      
-                      <Button variant="outline" size="sm" onClick={() => navigate(`/workflow-builder/${workflow.id}`)}>
-                        <ExternalLink className="h-4 w-4 mr-2" />
-                        Edit
-                      </Button>
-                      
-                      <div className="flex gap-1">
-                        <Button variant="outline" size="icon" onClick={() => handleExportWorkflow(workflow)} title="Export">
-                          <Download className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="icon" 
-                          onClick={() => {
-                            setSelectedWorkflow(workflow);
-                            setShowDeleteDialog(true);
-                          }}
-                          title="Delete"
-                        >
-                          <Trash className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </CardFooter>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="flex flex-col items-center justify-center p-12 border rounded-lg border-dashed">
-          <FolderIcon className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-medium mb-2">No workflows found</h3>
-          <p className="text-muted-foreground text-center mb-4">
-            {searchQuery 
-              ? `No workflows matching "${searchQuery}"` 
-              : "Create your first workflow to get started"}
+          <p className="text-muted-foreground">
+            Create, manage, and execute automated workflows
           </p>
-          {searchQuery ? (
-            <Button variant="outline" onClick={() => setSearchQuery('')}>
-              Clear Search
-            </Button>
-          ) : (
-            <Button onClick={() => setShowCreateDialog(true)}>
+        </div>
+        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
               Create Workflow
             </Button>
-          )}
-        </div>
-      )}
-      
-      {/* Create Workflow Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Create New Workflow</DialogTitle>
-            <DialogDescription>
-              Start with a template or create a workflow from scratch
-            </DialogDescription>
-          </DialogHeader>
-          
-          <Tabs defaultValue="templates">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="templates">Templates</TabsTrigger>
-              <TabsTrigger value="empty">Empty</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="templates" className="space-y-4 mt-4">
-              <div className="grid grid-cols-2 gap-4">
-                {templates.map(template => (
-                  <Card 
-                    key={template.id} 
-                    className="cursor-pointer hover:border-primary transition-colors"
-                    onClick={() => handleCreateWorkflow(template.name, template.description, template.id)}
-                  >
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-lg">{template.name}</CardTitle>
-                      <CardDescription>{template.description}</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-sm text-muted-foreground">
-                        {template.nodes.length} nodes • {template.edges.length} connections
-                      </div>
-                    </CardContent>
-                    <CardFooter>
-                      <Button className="w-full">Use Template</Button>
-                    </CardFooter>
-                  </Card>
-                ))}
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="empty" className="mt-4">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label htmlFor="name" className="text-sm font-medium">
-                    Workflow Name
-                  </label>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Create New Workflow</DialogTitle>
+              <DialogDescription>
+                Define the details for your new workflow.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit}>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="name">Name</Label>
                   <Input
                     id="name"
-                    placeholder="My Workflow"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    placeholder="Enter workflow name"
+                    required
                   />
                 </div>
-                <div className="space-y-2">
-                  <label htmlFor="description" className="text-sm font-medium">
-                    Description (optional)
-                  </label>
-                  <Input
+                <div className="grid gap-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
                     id="description"
-                    placeholder="Description of what this workflow does"
+                    name="description"
+                    value={formData.description}
+                    onChange={handleInputChange}
+                    placeholder="Describe the purpose of this workflow"
+                    rows={3}
                   />
                 </div>
-                <div className="pt-4">
-                  <Button 
-                    className="w-full"
-                    onClick={() => {
-                      const nameInput = document.getElementById('name') as HTMLInputElement;
-                      const descInput = document.getElementById('description') as HTMLInputElement;
-                      handleCreateWorkflow(nameInput.value, descInput.value);
-                    }}
+                <div className="grid gap-2">
+                  <Label htmlFor="category">Category</Label>
+                  <Select
+                    value={formData.category}
+                    onValueChange={handleCategoryChange}
                   >
-                    Create Empty Workflow
-                  </Button>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="AI Agents">AI Agents</SelectItem>
+                      <SelectItem value="Document Processing">Document Processing</SelectItem>
+                      <SelectItem value="Search">Search</SelectItem>
+                      <SelectItem value="Data Analysis">Data Analysis</SelectItem>
+                      <SelectItem value="Advanced">Advanced</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
-            </TabsContent>
-          </Tabs>
-        </DialogContent>
-      </Dialog>
-      
-      {/* Import Workflow Dialog */}
-      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Import Workflow</DialogTitle>
-            <DialogDescription>
-              Paste the workflow JSON to import
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            <textarea
-              className="w-full h-64 p-3 text-sm font-mono border rounded-md"
-              placeholder="Paste workflow JSON here..."
-              value={importData}
-              onChange={(e) => setImportData(e.target.value)}
-            />
-            
-            {importError && (
-              <div className="text-sm text-red-500 flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" />
-                {importError}
-              </div>
-            )}
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button type="button" variant="outline">
+                    Cancel
+                  </Button>
+                </DialogClose>
+                <Button type="submit" disabled={isLoading}>
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    'Create Workflow'
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <Card className="mb-8">
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <CardTitle>Your Workflows</CardTitle>
+            <div className="flex items-center space-x-2">
+              <ListFilter className="h-4 w-4 text-muted-foreground" />
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Filter by category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((category) => (
+                    <SelectItem key={category.toString()} value={category.toString()}>
+                      {category === 'all' ? 'All Categories' : category}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowImportDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleImportWorkflow}>
-              Import
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Workflow</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this workflow? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedWorkflow && (
-            <div className="flex items-center gap-3 p-3 border rounded-md bg-muted/50">
-              <FileIcon className="h-5 w-5 text-muted-foreground" />
-              <div>
-                <p className="font-medium">{selectedWorkflow.name}</p>
-                <p className="text-sm text-muted-foreground">
-                  {selectedWorkflow.nodes.length} nodes • {selectedWorkflow.edges.length} connections
-                </p>
-              </div>
+        </CardHeader>
+        <CardContent>
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {isLoading ? (
+            <div className="flex justify-center items-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <span className="ml-2">Loading workflows...</span>
+            </div>
+          ) : filteredWorkflows.length === 0 ? (
+            <div className="text-center py-8 border border-dashed rounded-lg">
+              <GitBranch className="h-10 w-10 mx-auto mb-2 text-muted-foreground" />
+              <h3 className="text-lg font-medium">No workflows found</h3>
+              <p className="text-muted-foreground">
+                {selectedCategory === 'all'
+                  ? 'Create your first workflow to get started'
+                  : `No workflows found in the "${selectedCategory}" category`}
+              </p>
+              {selectedCategory !== 'all' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={() => setSelectedCategory('all')}
+                >
+                  Show All Workflows
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead>Updated</TableHead>
+                    <TableHead>Nodes</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredWorkflows.map(workflow => (
+                    <TableRow key={workflow.id}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center">
+                          <GitBranch className="h-4 w-4 mr-2 text-muted-foreground" />
+                          <div>
+                            <div>{workflow.name}</div>
+                            <div className="text-xs text-muted-foreground truncate max-w-xs">
+                              {workflow.description}
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{workflow.category}</Badge>
+                      </TableCell>
+                      <TableCell>{formatDate(workflow.createdAt)}</TableCell>
+                      <TableCell>{formatDate(workflow.updatedAt)}</TableCell>
+                      <TableCell>{workflow.nodes.length}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleExecuteWorkflow(workflow.id)}
+                          >
+                            <Play className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditWorkflow(workflow)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-red-500 hover:text-red-700"
+                            onClick={() => setWorkflowToDelete(workflow.id)}
+                          >
+                            <Trash className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           )}
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDeleteWorkflow}>
+        </CardContent>
+      </Card>
+
+      {/* Execution Status Card */}
+      {executions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Executions</CardTitle>
+            <CardDescription>
+              Track the status and results of your workflow executions
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Workflow</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Started</TableHead>
+                    <TableHead>Completed</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {executions.map(execution => {
+                    const workflow = workflows.find(w => w.id === execution.workflowId);
+                    
+                    return (
+                      <TableRow key={execution.id}>
+                        <TableCell className="font-mono text-xs">
+                          {execution.id.substring(0, 8)}...
+                        </TableCell>
+                        <TableCell>
+                          {workflow ? workflow.name : execution.workflowId}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              execution.status === 'completed'
+                                ? 'default'
+                                : execution.status === 'failed'
+                                ? 'destructive'
+                                : execution.status === 'running'
+                                ? 'default'
+                                : 'outline'
+                            }
+                          >
+                            {execution.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{formatDate(execution.startTime)}</TableCell>
+                        <TableCell>
+                          {execution.endTime ? formatDate(execution.endTime) : '-'}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={!!workflowToDelete}
+        onOpenChange={open => !open && setWorkflowToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to delete this workflow?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the workflow
+              and all associated data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => workflowToDelete && handleDeleteWorkflow(workflowToDelete)}
+            >
               Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
-};
-
-export default WorkflowManagement;
+}

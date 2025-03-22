@@ -1,323 +1,288 @@
 /**
  * Document Processing Service
- *
- * Provides a comprehensive pipeline for processing documents:
- * 1. Document parsing (PDF, TXT, DOCX, etc.)
- * 2. Text extraction and cleaning
- * 3. Chunking strategies
- * 4. Embedding generation
- * 5. Vector database storage
+ * 
+ * Handles the end-to-end process of uploading, processing, chunking,
+ * and indexing documents for search and retrieval
  */
 
-import { v4 as uuidv4 } from "uuid";
-import { processDocumentFile } from "./fileProcessors";
-import {
-  chunkDocument,
-  ChunkingOptions,
-  DEFAULT_CHUNKING_OPTIONS,
-  DocumentChunk,
-} from "./documentChunker";
-import {
-  documentStorage,
-  DocumentMetadata,
-  documentUploadService,
-} from "./documentStorage";
-import { addDocumentToVectorStore, VectorDocument } from "./lanceDbService";
+import { v4 as uuidv4 } from 'uuid';
+import { HuggingFaceEmbeddingGenerator } from './huggingFaceEmbeddings';
+import { DocumentIndexingService } from './documentIndexingService';
+import { chunkDocument, ChunkingOptions, DEFAULT_CHUNKING_OPTIONS } from './documentChunker';
+import { textExtractorFactory } from './textExtraction';
 
-// Document types supported by the pipeline
-export type DocumentType =
-  | "pdf"
-  | "txt"
-  | "docx"
-  | "csv"
-  | "md"
-  | "json"
-  | "html";
+// Document storage interface
+export interface StorageManager {
+  saveDocument(documentId: string, content: string, metadata: any): Promise<string>;
+  retrieveDocument(documentId: string): Promise<{ content: string; metadata: any } | null>;
+  deleteDocument(documentId: string): Promise<boolean>;
+  listDocuments(workspaceId: string): Promise<any[]>;
+}
 
-// Processed document interface
-export interface ProcessedDocument {
-  id: string;
-  title: string;
-  content: string;
-  type: DocumentType | string;
-  createdAt: Date;
-  metadata: DocumentMetadata;
-  chunks?: DocumentChunk[];
+// Types for document processing
+export interface DocumentToProcess {
+  id?: string;
+  file: File;
+  metadata: {
+    fileName: string;
+    fileType: string;
+    fileSize: number;
+    workspaceId: string;
+    userId: string;
+    uploadDate: Date;
+    [key: string]: any;
+  };
+}
+
+export interface ProcessingOptions {
+  chunking: ChunkingOptions;
+  embeddingModel: string;
+  saveOriginal: boolean;
+  extractMetadata: boolean;
+  workspaceId: string;
+}
+
+export interface ProcessingResult {
+  documentId: string;
+  metadata: {
+    fileName: string;
+    fileType: string;
+    fileSize: number;
+    chunkCount: number;
+    processingTimeMs: number;
+    [key: string]: any;
+  };
+  success: boolean;
+  error?: string;
+}
+
+export interface ProgressCallback {
+  (progress: number, status: string, details?: any): void;
 }
 
 /**
- * Process a document file through the pipeline
- * @param file The file to process
- * @param workspaceId The workspace ID
- * @param options Chunking options
- * @returns The processed document
+ * Document Processing Service implementation
  */
-export async function processDocument(
-  file: File,
-  workspaceId: string,
-  options: Partial<ChunkingOptions> = {},
-): Promise<ProcessedDocument> {
-  try {
-    // 1. Extract text from document
-    const extractedData = await processDocumentFile(file);
+export class DocumentProcessingService {
+  private indexingService: DocumentIndexingService;
+  private embeddingGenerator: HuggingFaceEmbeddingGenerator;
+  private storageManager: StorageManager;
+  private defaultOptions: ProcessingOptions;
 
-    // 2. Generate a unique document ID
-    const docId = uuidv4();
-
-    // 3. Create document metadata
-    const metadata: DocumentMetadata = {
-      fileName: file.name,
-      fileSize: file.size,
-      fileType: file.type,
-      uploadedAt: new Date().toISOString(),
-      version: 1,
-      lastModified: file.lastModified,
-      ...extractedData.metadata,
+  constructor(
+    indexingService: DocumentIndexingService,
+    embeddingGenerator: HuggingFaceEmbeddingGenerator,
+    storageManager: StorageManager,
+    defaultOptions?: Partial<ProcessingOptions>
+  ) {
+    this.indexingService = indexingService;
+    this.embeddingGenerator = embeddingGenerator;
+    this.storageManager = storageManager;
+    
+    // Set default options
+    this.defaultOptions = {
+      chunking: DEFAULT_CHUNKING_OPTIONS,
+      embeddingModel: 'BAAI/bge-small-en-v1.5',
+      saveOriginal: true,
+      extractMetadata: true,
+      workspaceId: 'default',
+      ...defaultOptions
     };
-
-    // 4. Create the processed document
-    const document: ProcessedDocument = {
-      id: docId,
-      title: file.name,
-      content: extractedData.text,
-      type: extractedData.type,
-      createdAt: new Date(),
-      metadata,
-    };
-
-    // 5. Chunk the document
-    const chunkingOptions = { ...DEFAULT_CHUNKING_OPTIONS, ...options };
-    document.chunks = chunkDocument(docId, document.content, chunkingOptions, {
-      fileName: file.name,
-      fileType: extractedData.type,
-    });
-
-    // 6. Add to vector store
-    await addDocumentToVectorStore(workspaceId, {
-      id: document.id,
-      title: document.title,
-      content: document.content,
-      type: document.type,
-      createdAt: document.createdAt,
-      metadata: document.metadata,
-    });
-
-    // 7. Save to document storage
-    const repository = documentStorage.getRepository(workspaceId);
-    await repository.saveDocument({
-      id: document.id,
-      title: document.title,
-      content: document.content,
-      type: document.type,
-      createdAt: document.createdAt.toISOString(),
-      updatedAt: new Date().toISOString(),
-      version: 1,
-      metadata: document.metadata,
-    });
-
-    return document;
-  } catch (error) {
-    console.error("Error processing document:", error);
-    throw new Error(
-      `Failed to process document: ${error instanceof Error ? error.message : "Unknown error"}`,
-    );
   }
-}
 
-/**
- * Process multiple documents in batch
- * @param files Array of files to process
- * @param workspaceId The workspace ID
- * @param options Chunking options
- * @returns Array of processed documents
- */
-export async function batchProcessDocuments(
-  files: File[],
-  workspaceId: string,
-  options: Partial<ChunkingOptions> = {},
-): Promise<ProcessedDocument[]> {
-  const results: ProcessedDocument[] = [];
-  const errors: { fileName: string; error: string }[] = [];
-
-  for (const file of files) {
+  /**
+   * Process a document through the full pipeline
+   */
+  async processDocument(
+    document: DocumentToProcess,
+    options?: Partial<ProcessingOptions>,
+    progressCallback?: ProgressCallback
+  ): Promise<ProcessingResult> {
+    const startTime = Date.now();
+    
     try {
-      const document = await processDocument(file, workspaceId, options);
-      results.push(document);
-    } catch (error) {
-      console.error(`Error processing ${file.name}:`, error);
-      errors.push({
-        fileName: file.name,
-        error: error instanceof Error ? error.message : "Unknown error",
+      // Merge options with defaults
+      const processingOptions = {
+        ...this.defaultOptions,
+        ...options
+      };
+      
+      // Generate a document ID if not provided
+      const documentId = document.id || uuidv4();
+      
+      // Update workspace ID in the indexing service
+      this.indexingService.setWorkspaceId(processingOptions.workspaceId);
+      
+      // Report progress: 5%
+      progressCallback?.(5, 'Starting document processing');
+      
+      // Step 1: Extract text from the document
+      progressCallback?.(10, 'Extracting text from document');
+      const fileType = document.file.type || inferFileTypeFromName(document.file.name);
+      const textExtractor = textExtractorFactory.getExtractor(fileType);
+      
+      if (!textExtractor) {
+        throw new Error(`Unsupported file type: ${fileType}`);
+      }
+      
+      const extractedText = await textExtractor.extractText(document.file);
+      
+      if (!extractedText || extractedText.trim().length === 0) {
+        throw new Error('No text could be extracted from the document');
+      }
+      
+      // Report progress: 30%
+      progressCallback?.(30, 'Text extraction complete', { 
+        textLength: extractedText.length 
       });
+      
+      // Step 2: Extract metadata if requested
+      let extractedMetadata = {};
+      if (processingOptions.extractMetadata) {
+        progressCallback?.(35, 'Extracting metadata');
+        // In a production app, we'd have more sophisticated metadata extraction
+        extractedMetadata = {
+          wordCount: extractedText.split(/\s+/).length,
+          characterCount: extractedText.length,
+          extractionDate: new Date().toISOString()
+        };
+      }
+      
+      // Report progress: 40%
+      progressCallback?.(40, 'Metadata extraction complete');
+      
+      // Step 3: Save original document if requested
+      if (processingOptions.saveOriginal) {
+        progressCallback?.(45, 'Saving original document');
+        await this.storageManager.saveDocument(
+          documentId,
+          extractedText,
+          {
+            ...document.metadata,
+            ...extractedMetadata,
+            processingOptions
+          }
+        );
+      }
+      
+      // Report progress: 50%
+      progressCallback?.(50, 'Chunking document');
+      
+      // Step 4: Chunk the document
+      const chunks = chunkDocument(
+        documentId,
+        extractedText,
+        processingOptions.chunking,
+        {
+          fileName: document.metadata.fileName,
+          fileType: document.metadata.fileType,
+          workspaceId: processingOptions.workspaceId,
+          ...extractedMetadata
+        }
+      );
+      
+      // Report progress: 70%
+      progressCallback?.(70, 'Indexing document chunks', { 
+        chunkCount: chunks.length 
+      });
+      
+      // Step 5: Index the chunks
+      // Convert chunks to the format expected by the indexing service
+      const indexingChunks = chunks.map(chunk => ({
+        text: chunk.content,
+        metadata: {
+          ...chunk.metadata,
+          documentId
+        }
+      }));
+      
+      const indexingResult = await this.indexingService.processDocumentChunks(indexingChunks);
+      
+      // Report progress: 100%
+      progressCallback?.(100, 'Document processing complete');
+      
+      // Prepare result
+      return {
+        documentId,
+        metadata: {
+          ...document.metadata,
+          ...extractedMetadata,
+          chunkCount: chunks.length,
+          processingTimeMs: Date.now() - startTime
+        },
+        success: true
+      };
+    } catch (error) {
+      // Report error
+      progressCallback?.(0, 'Error processing document', { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+      return {
+        documentId: document.id || 'unknown',
+        metadata: {
+          ...document.metadata,
+          chunkCount: 0,
+          processingTimeMs: Date.now() - startTime
+        },
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      };
     }
   }
 
-  if (errors.length > 0) {
-    console.warn(`Completed with ${errors.length} errors:`, errors);
+  /**
+   * Delete a document and all its chunks
+   */
+  async deleteDocument(documentId: string, workspaceId?: string): Promise<boolean> {
+    try {
+      // Set workspace ID if provided
+      if (workspaceId) {
+        this.indexingService.setWorkspaceId(workspaceId);
+      }
+      
+      // Delete document chunks from the vector store
+      await this.indexingService.deleteDocumentChunks(documentId);
+      
+      // Delete the original document if it exists
+      await this.storageManager.deleteDocument(documentId);
+      
+      return true;
+    } catch (error) {
+      console.error(`Error deleting document ${documentId}:`, error);
+      return false;
+    }
   }
 
-  return results;
+  /**
+   * Get a list of all documents in a workspace
+   */
+  async listDocuments(workspaceId: string): Promise<any[]> {
+    return this.storageManager.listDocuments(workspaceId);
+  }
 }
 
 /**
- * Get the MIME type for a document type
- * @param type The document type
- * @returns The MIME type
+ * Helper function to infer file type from filename
  */
-export function getMimeTypeForDocumentType(type: DocumentType): string {
-  switch (type) {
-    case "pdf":
-      return "application/pdf";
-    case "txt":
-      return "text/plain";
-    case "docx":
-      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    case "csv":
-      return "text/csv";
-    case "md":
-      return "text/markdown";
-    case "json":
-      return "application/json";
-    case "html":
-      return "text/html";
+function inferFileTypeFromName(fileName: string): string {
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  
+  switch (extension) {
+    case 'pdf':
+      return 'application/pdf';
+    case 'docx':
+    case 'doc':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    case 'txt':
+      return 'text/plain';
+    case 'csv':
+      return 'text/csv';
+    case 'md':
+      return 'text/markdown';
+    case 'html':
+    case 'htm':
+      return 'text/html';
     default:
-      return "application/octet-stream";
+      return 'application/octet-stream';
   }
-}
-
-/**
- * Get the document type from a MIME type
- * @param mimeType The MIME type
- * @returns The document type
- */
-export function getDocumentTypeFromMimeType(
-  mimeType: string,
-): DocumentType | string {
-  if (mimeType.includes("pdf")) return "pdf";
-  if (mimeType.includes("text/plain")) return "txt";
-  if (mimeType.includes("word")) return "docx";
-  if (mimeType.includes("csv")) return "csv";
-  if (mimeType.includes("markdown")) return "md";
-  if (mimeType.includes("json")) return "json";
-  if (mimeType.includes("html")) return "html";
-  return mimeType;
-}
-
-/**
- * Clean and normalize document text
- * @param text The text to clean
- * @returns The cleaned text
- */
-export function cleanDocumentText(text: string): string {
-  // Remove excessive whitespace
-  let cleaned = text.replace(/\s+/g, " ");
-
-  // Remove control characters
-  cleaned = cleaned.replace(/[\x00-\x09\x0B-\x0C\x0E-\x1F\x7F]/g, "");
-
-  // Normalize line endings
-  cleaned = cleaned.replace(/\r\n/g, "\n");
-
-  // Trim the text
-  cleaned = cleaned.trim();
-
-  return cleaned;
-}
-
-/**
- * Extract keywords from document text
- * @param text The document text
- * @param maxKeywords Maximum number of keywords to extract
- * @returns Array of keywords
- */
-export function extractKeywords(
-  text: string,
-  maxKeywords: number = 10,
-): string[] {
-  // Simple keyword extraction based on word frequency
-  // In a real implementation, you would use a more sophisticated algorithm
-
-  // Remove common stop words
-  const stopWords = new Set([
-    "a",
-    "an",
-    "the",
-    "and",
-    "or",
-    "but",
-    "is",
-    "are",
-    "was",
-    "were",
-    "in",
-    "on",
-    "at",
-    "to",
-    "for",
-    "with",
-    "by",
-    "about",
-    "as",
-    "of",
-    "from",
-    "this",
-    "that",
-    "these",
-    "those",
-    "it",
-    "its",
-    "they",
-    "them",
-    "their",
-    "we",
-    "us",
-    "our",
-    "you",
-    "your",
-    "he",
-    "him",
-    "his",
-    "she",
-    "her",
-    "hers",
-    "i",
-    "me",
-    "my",
-    "mine",
-    "be",
-    "been",
-    "being",
-    "have",
-    "has",
-    "had",
-    "do",
-    "does",
-    "did",
-    "will",
-    "would",
-    "shall",
-    "should",
-    "can",
-    "could",
-    "may",
-    "might",
-    "must",
-    "ought",
-  ]);
-
-  // Tokenize and count words
-  const words = text.toLowerCase().match(/\b\w{3,}\b/g) || [];
-  const wordCounts: Record<string, number> = {};
-
-  for (const word of words) {
-    if (!stopWords.has(word)) {
-      wordCounts[word] = (wordCounts[word] || 0) + 1;
-    }
-  }
-
-  // Sort by frequency and return top keywords
-  return Object.entries(wordCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, maxKeywords)
-    .map(([word]) => word);
 }

@@ -1,69 +1,132 @@
-# Welcome to your Lovable project
+# Backend API Implementation
 
-## Project info
+This project implements a complete backend API system with authentication, authorization, database integration, and error handling.
 
-**URL**: https://lovable.dev/projects/90d3a9d5-9172-4cd3-9763-328ae49ae026
+## Features Implemented
 
-## How can I edit this code?
+### API Endpoints
+- **Authentication**: Login, register, logout, and user profile management
+- **Document Management**: CRUD operations with access control
+- **API Keys**: Managing API keys for external services
+- **Audit Logs**: Comprehensive audit logging system
+- **User Management**: User profile management and administration
 
-There are several ways of editing your application.
+### Database Integration
+- SQLite database for storing user data, documents, permissions, and audit logs
+- In-memory database with option to persist data
+- Secure storage for sensitive information with encryption
 
-**Use Lovable**
+### Authentication & Authorization
+- Token-based authentication with secure session management
+- Role-based access control for documents
+- Permission checking middleware
+- Secure password handling with bcrypt
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/90d3a9d5-9172-4cd3-9763-328ae49ae026) and start prompting.
+### Error Handling
+- Standardized error responses
+- Centralized error handling middleware
+- Type-safe error handling with TypeScript
+- Comprehensive error logging
 
-Changes made via Lovable will be committed automatically to this repo.
+## Project Structure
 
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+src/
+├── lib/
+│   ├── api/
+│   │   ├── errorHandler.ts        # Standardized API error handling
+│   │   └── routeUtils.ts          # Route utilities for Express
+│   ├── db/
+│   │   ├── secureDb.ts            # Encrypted database storage
+│   │   └── sqlite.ts              # SQLite database connection and operations
+│   └── security/
+│       ├── accessControl.ts       # Document access control
+│       ├── auditLog.ts            # Audit logging system
+│       └── encryption.ts          # Encryption utilities
+├── middleware/
+│   ├── auth.ts                    # General auth middleware 
+│   └── authMiddleware.ts          # Express-specific auth middleware
+├── routes/
+│   └── api/
+│       ├── apiKeys.ts             # API key management routes
+│       ├── auditLogs.ts           # Audit logs routes
+│       ├── auth.ts                # Authentication routes
+│       ├── documents.ts           # Document management routes
+│       └── users.ts               # User management routes
+├── types/
+│   └── database.ts                # TypeScript interfaces for database entities
+└── server.ts                      # Main server file
 ```
 
-**Edit a file directly in GitHub**
+## Running the Server
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+To start the development server:
 
-**Use GitHub Codespaces**
+```bash
+npm run server:dev
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+This will start the server with nodemon for automatic reloading.
 
-## What technologies are used for this project?
+For production:
 
-This project is built with .
+```bash
+npm run server
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## API Endpoints
 
-## How can I deploy this project?
+### Authentication
 
-Simply open [Lovable](https://lovable.dev/projects/90d3a9d5-9172-4cd3-9763-328ae49ae026) and click on Share -> Publish.
+- `POST /api/auth/register` - Register a new user
+- `POST /api/auth/login` - Authenticate and get token
+- `POST /api/auth/logout` - Logout (invalidate token)
+- `GET /api/auth/user` - Get current user
 
-## I want to use a custom domain - is that possible?
+### Documents
 
-We don't support custom domains (yet). If you want to deploy your project under your own domain then we recommend using Netlify. Visit our docs for more details: [Custom domains](https://docs.lovable.dev/tips-tricks/custom-domain/)
+- `GET /api/documents` - Get all documents for user
+- `POST /api/documents` - Create a new document
+- `GET /api/documents/:id` - Get a document by ID
+- `PUT /api/documents/:id` - Update a document
+- `DELETE /api/documents/:id` - Delete a document
+- `GET /api/documents/:id/access` - Get users with access to a document
+- `POST /api/documents/:id/access` - Grant access to a document
+- `DELETE /api/documents/:id/access/:userId` - Revoke access
+
+### API Keys
+
+- `GET /api/api-keys` - Get all API keys for user
+- `POST /api/api-keys` - Create/update an API key
+- `GET /api/api-keys/:service` - Get an API key for a specific service
+- `DELETE /api/api-keys/:service` - Delete an API key
+
+### Users
+
+- `GET /api/users` - Get all users (admin only)
+- `GET /api/users/:id` - Get a user by ID
+- `PUT /api/users/:id` - Update a user
+- `DELETE /api/users/:id` - Delete a user (admin only)
+
+### Audit Logs
+
+- `GET /api/audit-logs` - Get audit logs with filters (admin only)
+- `GET /api/audit-logs/:id` - Get a single audit log entry
+- `GET /api/audit-logs/user/:userId` - Get audit logs for a specific user
+
+## Authentication
+
+All routes except for `/api/auth/login` and `/api/auth/register` require authentication. To authenticate, include the token in the Authorization header:
+
+```
+Authorization: Bearer <token>
+```
+
+The token is obtained from the `/api/auth/login` endpoint.
+
+## Test Users
+
+The system automatically creates two test users on startup:
+
+- Admin: `admin@example.com` / `password123`
+- User: `user@example.com` / `password123`

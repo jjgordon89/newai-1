@@ -1,319 +1,157 @@
 /**
- * Text Extraction Service
+ * Text Extraction Utilities
  *
- * Provides utilities for extracting text from different file types
+ * Provides functionality for extracting text from various file formats
  */
 
-// Supported file types for text extraction
-export type SupportedFileType =
-  | "pdf"
-  | "txt"
-  | "docx"
-  | "md"
-  | "csv"
-  | "json"
-  | "html";
-
-// Extracted text result
-export interface ExtractedText {
-  text: string;
-  metadata: Record<string, any>;
+// Interface for text extractors
+export interface TextExtractor {
+  supportedMimeTypes: string[];
+  extractText(file: File): Promise<string>;
 }
 
 /**
- * Extract text from a plain text file
+ * Plain Text Extractor
+ * Handles plain text files like .txt
  */
-export async function extractTextFromTxt(file: File): Promise<ExtractedText> {
-  const text = await readFileAsText(file);
+class PlainTextExtractor implements TextExtractor {
+  supportedMimeTypes = ['text/plain'];
 
-  return {
-    text,
-    metadata: {
-      lineCount: text.split("\n").length,
-      wordCount: text.split(/\s+/).filter(Boolean).length,
-      charCount: text.length,
-    },
-  };
-}
-
-/**
- * Extract text from a markdown file
- */
-export async function extractTextFromMarkdown(
-  file: File,
-): Promise<ExtractedText> {
-  const text = await readFileAsText(file);
-
-  // Extract metadata from frontmatter if present
-  const frontmatterMetadata = extractFrontmatter(text);
-  const cleanedText = removeFrontmatter(text);
-
-  return {
-    text: cleanedText,
-    metadata: {
-      ...frontmatterMetadata,
-      lineCount: cleanedText.split("\n").length,
-      wordCount: cleanedText.split(/\s+/).filter(Boolean).length,
-      charCount: cleanedText.length,
-      headings: extractHeadings(cleanedText),
-    },
-  };
-}
-
-/**
- * Extract text from a PDF file
- */
-export async function extractTextFromPdf(file: File): Promise<ExtractedText> {
-  try {
-    // In a real implementation, you would use a library like pdf.js
-    // For now, we'll return a placeholder
-    return {
-      text: `PDF text extraction would be implemented with pdf.js in a real application. File: ${file.name}`,
-      metadata: {
-        fileName: file.name,
-        fileSize: file.size,
-        extractionMethod: "placeholder",
-      },
-    };
-  } catch (error) {
-    console.error("Error extracting text from PDF:", error);
-    throw new Error(
-      `Failed to extract text from PDF: ${error instanceof Error ? error.message : "Unknown error"}`,
-    );
-  }
-}
-
-/**
- * Extract text from a DOCX file
- */
-export async function extractTextFromDocx(file: File): Promise<ExtractedText> {
-  try {
-    // In a real implementation, you would use a library like mammoth.js
-    // For now, we'll return a placeholder
-    return {
-      text: `DOCX text extraction would be implemented with mammoth.js in a real application. File: ${file.name}`,
-      metadata: {
-        fileName: file.name,
-        fileSize: file.size,
-        extractionMethod: "placeholder",
-      },
-    };
-  } catch (error) {
-    console.error("Error extracting text from DOCX:", error);
-    throw new Error(
-      `Failed to extract text from DOCX: ${error instanceof Error ? error.message : "Unknown error"}`,
-    );
-  }
-}
-
-/**
- * Extract text from a CSV file
- */
-export async function extractTextFromCsv(file: File): Promise<ExtractedText> {
-  const text = await readFileAsText(file);
-
-  // Parse CSV to extract structure
-  const lines = text.split("\n").filter((line) => line.trim().length > 0);
-  const headers = lines[0].split(",").map((header) => header.trim());
-
-  return {
-    text,
-    metadata: {
-      rowCount: lines.length - 1, // Exclude header row
-      columnCount: headers.length,
-      headers,
-    },
-  };
-}
-
-/**
- * Extract text from a JSON file
- */
-export async function extractTextFromJson(file: File): Promise<ExtractedText> {
-  const text = await readFileAsText(file);
-
-  let jsonMetadata: Record<string, any> = {};
-  try {
-    const jsonData = JSON.parse(text);
-    jsonMetadata = {
-      isArray: Array.isArray(jsonData),
-      itemCount: Array.isArray(jsonData) ? jsonData.length : 1,
-      topLevelKeys: Array.isArray(jsonData)
-        ? Object.keys(jsonData[0] || {})
-        : Object.keys(jsonData),
-    };
-  } catch (error) {
-    jsonMetadata = { parseError: true };
-  }
-
-  return {
-    text,
-    metadata: jsonMetadata,
-  };
-}
-
-/**
- * Extract text from an HTML file
- */
-export async function extractTextFromHtml(file: File): Promise<ExtractedText> {
-  const text = await readFileAsText(file);
-
-  // Extract plain text from HTML
-  const plainText = extractPlainTextFromHtml(text);
-
-  return {
-    text: plainText,
-    metadata: {
-      originalHtml: text,
-      title: extractTitle(text),
-      hasImages: text.includes("<img"),
-      hasLinks: text.includes("<a "),
-      wordCount: plainText.split(/\s+/).filter(Boolean).length,
-    },
-  };
-}
-
-/**
- * Extract text from a file based on its type
- */
-export async function extractTextFromFile(file: File): Promise<ExtractedText> {
-  const fileType = getFileType(file);
-
-  switch (fileType) {
-    case "txt":
-      return extractTextFromTxt(file);
-    case "md":
-      return extractTextFromMarkdown(file);
-    case "pdf":
-      return extractTextFromPdf(file);
-    case "docx":
-      return extractTextFromDocx(file);
-    case "csv":
-      return extractTextFromCsv(file);
-    case "json":
-      return extractTextFromJson(file);
-    case "html":
-      return extractTextFromHtml(file);
-    default:
-      throw new Error(`Unsupported file type: ${fileType}`);
-  }
-}
-
-/**
- * Helper function to read a file as text
- */
-export async function readFileAsText(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsText(file);
-  });
-}
-
-/**
- * Helper function to get the file type from a file
- */
-function getFileType(file: File): SupportedFileType | string {
-  const extension = file.name.split(".").pop()?.toLowerCase() || "";
-
-  switch (extension) {
-    case "pdf":
-      return "pdf";
-    case "txt":
-      return "txt";
-    case "docx":
-      return "docx";
-    case "csv":
-      return "csv";
-    case "md":
-      return "md";
-    case "json":
-      return "json";
-    case "html":
-    case "htm":
-      return "html";
-    default:
-      return extension;
-  }
-}
-
-/**
- * Helper function to extract frontmatter from markdown
- */
-function extractFrontmatter(text: string): Record<string, any> {
-  const frontmatterRegex = /^---\n([\s\S]*?)\n---/;
-  const match = text.match(frontmatterRegex);
-
-  if (!match) return {};
-
-  const frontmatter = match[1];
-  const metadata: Record<string, any> = {};
-
-  frontmatter.split("\n").forEach((line) => {
-    const [key, ...valueParts] = line.split(":");
-    if (key && valueParts.length) {
-      const value = valueParts.join(":").trim();
-      metadata[key.trim()] = value;
-    }
-  });
-
-  return metadata;
-}
-
-/**
- * Helper function to remove frontmatter from markdown
- */
-function removeFrontmatter(text: string): string {
-  return text.replace(/^---\n[\s\S]*?\n---\n/, "");
-}
-
-/**
- * Helper function to extract headings from markdown
- */
-function extractHeadings(text: string): { level: number; text: string }[] {
-  const headingRegex = /^(#{1,6})\s+(.+)$/gm;
-  const headings: { level: number; text: string }[] = [];
-
-  let match;
-  while ((match = headingRegex.exec(text)) !== null) {
-    headings.push({
-      level: match[1].length,
-      text: match[2].trim(),
+  async extractText(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('Failed to read text file'));
+      reader.readAsText(file);
     });
   }
-
-  return headings;
 }
 
 /**
- * Helper function to extract plain text from HTML
+ * Markdown Extractor
+ * Handles markdown files (.md)
  */
-function extractPlainTextFromHtml(html: string): string {
-  // Create a DOM parser
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, "text/html");
+class MarkdownExtractor implements TextExtractor {
+  supportedMimeTypes = ['text/markdown', 'text/x-markdown'];
 
-  // Remove script and style elements
-  const scripts = doc.getElementsByTagName("script");
-  const styles = doc.getElementsByTagName("style");
-
-  for (let i = scripts.length - 1; i >= 0; i--) {
-    scripts[i].remove();
+  async extractText(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('Failed to read markdown file'));
+      reader.readAsText(file);
+    });
   }
-
-  for (let i = styles.length - 1; i >= 0; i--) {
-    styles[i].remove();
-  }
-
-  // Get the text content
-  return doc.body.textContent || "";
 }
 
 /**
- * Helper function to extract title from HTML
+ * HTML Extractor
+ * Extracts text from HTML files, stripping tags
  */
-function extractTitle(html: string): string {
-  const titleMatch = html.match(/<title>([^<]*)<\/title>/);
-  return titleMatch ? titleMatch[1] : "";
+class HtmlExtractor implements TextExtractor {
+  supportedMimeTypes = ['text/html'];
+
+  async extractText(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const html = reader.result as string;
+        // Simple HTML parsing - in a real app, use a proper HTML parser
+        const text = html.replace(/<[^>]*>/g, ' ') // Remove HTML tags
+          .replace(/\s+/g, ' ')                    // Normalize whitespace
+          .trim();
+        resolve(text);
+      };
+      reader.onerror = () => reject(new Error('Failed to read HTML file'));
+      reader.readAsText(file);
+    });
+  }
 }
+
+/**
+ * PDF Extractor
+ * Extracts text from PDF files
+ */
+class PdfExtractor implements TextExtractor {
+  supportedMimeTypes = ['application/pdf'];
+
+  async extractText(file: File): Promise<string> {
+    // In a real application, you would use a PDF parsing library like pdf.js
+    // For this example, we'll simulate PDF text extraction
+    return new Promise((resolve, reject) => {
+      // Simulate PDF processing delay
+      setTimeout(() => {
+        console.log(`Simulating text extraction from PDF: ${file.name}`);
+        resolve(`This is simulated text extracted from the PDF file ${file.name}. 
+        In a real application, this would contain the actual text content of the PDF.
+        For demonstration purposes, we're generating this placeholder content.`);
+      }, 500);
+    });
+  }
+}
+
+/**
+ * Word Document Extractor
+ * Extracts text from Microsoft Word files
+ */
+class WordExtractor implements TextExtractor {
+  supportedMimeTypes = [
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+    'application/msword' // .doc
+  ];
+
+  async extractText(file: File): Promise<string> {
+    // In a real application, you would use a library like mammoth.js
+    // For this example, we'll simulate Word document text extraction
+    return new Promise((resolve, reject) => {
+      // Simulate Word document processing delay
+      setTimeout(() => {
+        console.log(`Simulating text extraction from Word document: ${file.name}`);
+        resolve(`This is simulated text extracted from the Word document ${file.name}.
+        In a real application, this would contain the actual text content of the document.
+        For demonstration purposes, we're generating this placeholder content.`);
+      }, 500);
+    });
+  }
+}
+
+/**
+ * Factory for creating text extractors based on file type
+ */
+class TextExtractorFactory {
+  private extractors: TextExtractor[] = [
+    new PlainTextExtractor(),
+    new MarkdownExtractor(),
+    new HtmlExtractor(),
+    new PdfExtractor(),
+    new WordExtractor()
+  ];
+
+  /**
+   * Get an appropriate extractor for the given MIME type
+   */
+  getExtractor(mimeType: string): TextExtractor | null {
+    return this.extractors.find(extractor => 
+      extractor.supportedMimeTypes.some(supportedType => 
+        supportedType === mimeType || mimeType.startsWith(supportedType)
+      )
+    ) || null;
+  }
+
+  /**
+   * Register a new extractor
+   */
+  registerExtractor(extractor: TextExtractor): void {
+    this.extractors.push(extractor);
+  }
+
+  /**
+   * Get all supported MIME types
+   */
+  getSupportedMimeTypes(): string[] {
+    return this.extractors.flatMap(extractor => extractor.supportedMimeTypes);
+  }
+}
+
+// Export a singleton instance of the factory
+export const textExtractorFactory = new TextExtractorFactory();
